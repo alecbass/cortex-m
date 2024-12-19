@@ -128,14 +128,25 @@ SECTIONS
   {
     . = ALIGN(4);
     __sdata = .;
+    /** ALTERED FROM ORIGINAL: Copy __sdata */
+    __data_start__ = __sdata;
     *(.data .data.*);
     . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
+
+    /* ALTERED FROM ORIGINAL */
+    /* preinit data */
+    PROVIDE_HIDDEN (__mutex_array_start = .);
+    KEEP(*(SORT(.mutex_array.*)))
+    KEEP(*(.mutex_array))
+    PROVIDE_HIDDEN (__mutex_array_end = .);
   } > RAM AT>FLASH
   /* Allow sections from user `memory.x` injected using `INSERT AFTER .data` to
    * use the .data loading mechanism by pushing __edata. Note: do not change
    * output region or load region in those user sections! */
   . = ALIGN(4);
   __edata = .;
+  /** ALTERED FROM ORIGINAL: Copy __edata */
+  __data_end__ = __edata;
 
   /* LMA of .data */
   __sidata = LOADADDR(.data);
@@ -162,6 +173,8 @@ SECTIONS
   {
     . = ALIGN(4);
     __sbss = .;
+    /* ALTERED FROM ORIGINAL: Copy __sbss */
+    __bss_start__ = __sbss;
     *(.bss .bss.*);
     *(COMMON); /* Uninitialized C statics */
     . = ALIGN(4); /* 4-byte align the end (VMA) of this section */
@@ -171,6 +184,8 @@ SECTIONS
    * output region or load region in those user sections! */
   . = ALIGN(4);
   __ebss = .;
+  /* ALTERED FROM ORIGINAL: Copy __ebss */
+  __bss_end__ = __ebss;
 
   /* ### .uninit */
   .uninit (NOLOAD) : ALIGN(4)
@@ -185,8 +200,73 @@ SECTIONS
   /* Place the heap right after `.uninit` in RAM */
   PROVIDE(__sheap = __euninit);
 
+  /* ALTERED FROM ORIGINAL: Add heap */
+  .heap (NOLOAD):
+  {
+    __end__ = .;
+    end = __end__;
+    KEEP(*(.heap*))
+    /* historically on GCC sbrk was growing past __HeapLimit to __StackLimit, however
+       to be more compatible, we now set __HeapLimit explicitly to where the end of the heap is */
+    . = ORIGIN(RAM) + LENGTH(RAM);
+    __HeapLimit = .;
+  } > RAM
+
   /* Place stack end at the end of allocated RAM */
   PROVIDE(_stack_end = __euninit);
+
+
+  /* ALTERED FROM ORIGINAL: Copy scratch areas */
+  /* Start and end symbols must be word-aligned */
+  .scratch_x : {
+    __scratch_x_start__ = .;
+    *(.scratch_x.*)
+    . = ALIGN(4);
+    __scratch_x_end__ = .;
+  } > SCRATCH_X AT > FLASH
+  __scratch_x_source__ = LOADADDR(.scratch_x);
+
+  .scratch_y : {
+    __scratch_y_start__ = .;
+    *(.scratch_y.*)
+    . = ALIGN(4);
+    __scratch_y_end__ = .;
+  } > SCRATCH_Y AT > FLASH
+  __scratch_y_source__ = LOADADDR(.scratch_y);
+
+  /* ALTERED FROM ORIGINAL */
+  /* stack limit is poorly named, but historically is maximum heap ptr */
+  __StackLimit = ORIGIN(RAM) + LENGTH(RAM);
+  __StackOneTop = ORIGIN(SCRATCH_X) + LENGTH(SCRATCH_X);
+  __StackTop = ORIGIN(SCRATCH_Y) + LENGTH(SCRATCH_Y);
+  __StackOneBottom = __StackOneTop - SIZEOF(.stack1_dummy);
+  __StackBottom = __StackTop - SIZEOF(.stack_dummy);
+  PROVIDE(__stack = __StackTop);
+
+  /* TESTING COPYING C MEMORY ALLOCATIONS FOR PICO W SUPPORT. THIS IS LIKELY NOT CORRECT */
+  /* Based on GCC ARM embedded samples.
+    Defines the following symbols for use by code:
+    __exidx_start
+    __exidx_end
+    __etext
+    __data_start__
+    __preinit_array_start
+    __preinit_array_end
+    __init_array_start
+    __init_array_end
+    __fini_array_start
+    __fini_array_end
+    __data_end__
+    __bss_start__
+    __bss_end__
+    __end__
+    end
+    __HeapLimit
+    __StackLimit
+    __StackTop
+    __stack (== StackTop)
+  */
+
 
   /* ## .got */
   /* Dynamic relocations are unsupported. This section is only used to detect relocatable code in
